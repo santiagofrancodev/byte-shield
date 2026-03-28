@@ -1,0 +1,40 @@
+{
+  "generado_en": "2026-03-28T05:00:00+00:00",
+  "herramienta": "tls_scanner.py — CloudLabs Hackathon",
+  "resultados": [
+    {
+      "host": "34.45.64.235",
+      "puerto": 443,
+      "nivel": "CRÍTICO",
+      "tls": {
+        "TLS 1.0": {
+          "habilitado": true,
+          "obsoleto": true
+        },
+        "TLS 1.1": {
+          "habilitado": true,
+          "obsoleto": true
+        },
+        "TLS 1.2": {
+          "habilitado": true,
+          "obsoleto": false
+        },
+        "TLS 1.3": {
+          "habilitado": false,
+          "obsoleto": false
+        }
+      },
+      "hallazgos": [
+        "TLS 1.0 habilitado — protocolo obsoleto desde 2018 (RFC 8996).",
+        "TLS 1.1 habilitado — deprecado formalmente (RFC 8996).",
+        "TLS 1.2 activo pero TLS 1.3 ausente — configuración subóptima."
+      ],
+      "recomendaciones": [
+        "Deshabilitar TLS 1.0 en la configuración del servidor (nginx: ssl_protocols TLSv1.2 TLSv1.3;).",
+        "Deshabilitar TLS 1.1 para evitar ataques de degradación criptográfica (POODLE, BEAST).",
+        "Habilitar TLS 1.3 para cifrado con Perfect Forward Secrecy y handshake más rápido."
+      ],
+      "timestamp": "2026-03-28T05:00:00+00:00"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+# Byte-Shield — Motor de Auditoría TLS
+#
+# Este proyecto NO requiere dependencias externas.
+# Funciona 100% con la biblioteca estándar de Python 3.10+
+#
+# Módulos stdlib utilizados:
+#   ssl, socket, json, csv, argparse, datetime,
+#   http.server, threading, io, warnings, pathlib
+#
+# Para ejecutar:
+#   python3 tls_scanner.py --target <host>
+#   python3 dashboard.py

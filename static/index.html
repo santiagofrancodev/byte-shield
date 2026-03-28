@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Byte-Shield — Dashboard de Auditoría TLS</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="header-content">
+      <div class="logo">
+        <span class="logo-icon">&gt;_</span>
+        <div>
+          <h1>BYTE-SHIELD</h1>
+          <p class="subtitle">Motor de Auditoría TLS — Operación Defensa Web</p>
+        </div>
+      </div>
+      <div class="header-badge">CloudLabs Learning &times; Talento Tech</div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Panel de entrada -->
+    <section class="input-panel">
+      <h2 class="section-title">Configurar Análisis</h2>
+      <div class="input-grid">
+        <div class="input-group">
+          <label for="target-input">Host / IP</label>
+          <input type="text" id="target-input" placeholder="ej: 34.45.64.235" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label for="ports-input">Puertos</label>
+          <input type="text" id="ports-input" value="443" placeholder="ej: 443, 8443">
+        </div>
+      </div>
+      <div class="input-group full-width">
+        <label for="batch-input">Modo Batch — múltiples targets (uno por línea)</label>
+        <textarea id="batch-input" rows="3" placeholder="172.18.0.2&#10;34.45.64.235&#10;api.example.com"></textarea>
+      </div>
+      <div class="button-row">
+        <button id="btn-scan" onclick="iniciarScan()">
+          <span class="btn-icon">&#9654;</span> Iniciar Análisis
+        </button>
+        <button id="btn-clear" class="btn-secondary" onclick="limpiarResultados()">Limpiar</button>
+      </div>
+    </section>
+
+    <!-- Barra de progreso -->
+    <section id="progress-section" class="progress-section hidden">
+      <div class="progress-bar-container">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+      <p id="progress-text" class="progress-text">Preparando escaneo...</p>
+    </section>
+
+    <!-- Resumen -->
+    <section id="summary-section" class="summary-section hidden">
+      <h2 class="section-title">Resumen</h2>
+      <div class="meta-grid">
+        <div class="meta-card">
+          <div class="value" id="total-hosts">0</div>
+          <div class="label">Analizados</div>
+        </div>
+        <div class="meta-card">
+          <div class="value critico" id="total-critico">0</div>
+          <div class="label">Crítico</div>
+        </div>
+        <div class="meta-card">
+          <div class="value medio" id="total-medio">0</div>
+          <div class="label">Medio</div>
+        </div>
+        <div class="meta-card">
+          <div class="value seguro" id="total-seguro">0</div>
+          <div class="label">Seguro</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Resultados -->
+    <section id="results-section" class="results-section hidden">
+      <h2 class="section-title">Resultados por Servidor</h2>
+      <div id="results-container"></div>
+    </section>
+
+    <!-- Exportar -->
+    <section id="export-section" class="export-section hidden">
+      <h2 class="section-title">Exportar Reporte</h2>
+      <div class="export-buttons">
+        <button class="btn-export btn-json" onclick="exportar('json')">
+          <span class="export-icon">{}</span> JSON
+        </button>
+        <button class="btn-export btn-csv" onclick="exportar('csv')">
+          <span class="export-icon">&#9638;</span> CSV
+        </button>
+        <button class="btn-export btn-html" onclick="exportar('html')">
+          <span class="export-icon">&lt;/&gt;</span> HTML
+        </button>
+      </div>
+    </section>
+
+    <!-- Log de eventos -->
+    <section id="log-section" class="log-section hidden">
+      <h2 class="section-title">Log de Actividad</h2>
+      <div id="log-container" class="log-container"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Byte-Shield v1.0 &mdash; Solo librerías estándar de Python &mdash; Análisis defensivo, sin explotación</p>
+    <p class="footer-team">Byte Security Group &mdash; CloudLabs Learning &times; Talento Tech Hackathon 2026</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
