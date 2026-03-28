@@ -21,6 +21,8 @@ import argparse
 import sys
 import datetime
 import warnings
+import urllib.request
+import urllib.error
 from typing import Optional
 
 # Silenciar DeprecationWarnings de ssl en Python 3.12+
@@ -182,7 +184,7 @@ def auditar_tls_en_puerto(host: str, puerto: int) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════
-# MÓDULO 4 — MOTOR DE EVALUACIÓN Y CRITICIDAD
+# MÓDULO 4 — MOTOR DE EVALUACIÓN Y CUMPLIMIENTO (Compliance-as-Code)
 # ══════════════════════════════════════════════════════════════════
 
 # Niveles: CRITICO > MEDIO > SEGURO
@@ -190,57 +192,246 @@ NIVEL_CRITICO = "CRÍTICO"
 NIVEL_MEDIO   = "MEDIO"
 NIVEL_SEGURO  = "SEGURO"
 
+NIVEL_PRIORIDAD: dict[str, int] = {
+    NIVEL_SEGURO:  0,
+    NIVEL_MEDIO:   1,
+    NIVEL_CRITICO: 2,
+}
+
+# ──────────────────────────────────────────────────────────────────
+# FUENTE DE VERDAD — Estándares de cumplimiento por protocolo TLS
+# ──────────────────────────────────────────────────────────────────
+ESTANDARES_CUMPLIMIENTO: dict[str, dict] = {
+    "TLS 1.0": {
+        "nivel": NIVEL_CRITICO,
+        "fuente_oficial": "RFC 8996 (2021), NIST SP 800-52 Rev. 2",
+        "motivo_tecnico": (
+            "Protocolo obsoleto desde 2018. Vulnerable a ataques POODLE y BEAST "
+            "por debilidades en CBC y falta de AEAD."
+        ),
+        "recomendacion_accionable": (
+            "Deshabilitar TLS 1.0 en la configuración del servidor "
+            "(nginx: ssl_protocols TLSv1.2 TLSv1.3;)."
+        ),
+    },
+    "TLS 1.1": {
+        "nivel": NIVEL_CRITICO,
+        "fuente_oficial": "RFC 8996 (2021), NIST SP 800-52 Rev. 2",
+        "motivo_tecnico": (
+            "Deprecado formalmente. Susceptible a degradación criptográfica "
+            "y carece de cipher suites AEAD modernos."
+        ),
+        "recomendacion_accionable": (
+            "Deshabilitar TLS 1.1 para evitar ataques de degradación "
+            "criptográfica (POODLE, BEAST)."
+        ),
+    },
+    "TLS 1.2": {
+        "nivel": NIVEL_SEGURO,
+        "fuente_oficial": "RFC 5246, NIST SP 800-52 Rev. 2",
+        "motivo_tecnico": (
+            "Versión segura vigente. Requiere cipher suites modernos "
+            "(ECDHE + AES-GCM / CHACHA20-POLY1305)."
+        ),
+        "recomendacion_accionable": (
+            "Mantener habilitado. Validar que los cipher suites "
+            "no incluyan RC4, DES, 3DES o NULL."
+        ),
+        "alerta_sin_tls13": {
+            "nivel": NIVEL_MEDIO,
+            "fuente_oficial": "NIST SP 800-52 Rev. 2",
+            "motivo_tecnico": (
+                "TLS 1.2 activo pero TLS 1.3 ausente — configuración subóptima. "
+                "Se pierde handshake 0-RTT y PFS obligatorio."
+            ),
+            "recomendacion_accionable": (
+                "Habilitar TLS 1.3 para cifrado con Perfect Forward Secrecy "
+                "y handshake más rápido (1-RTT)."
+            ),
+        },
+    },
+    "TLS 1.3": {
+        "nivel": NIVEL_SEGURO,
+        "fuente_oficial": "RFC 8446 (2018), NIST SP 800-52 Rev. 2",
+        "motivo_tecnico": (
+            "Versión más segura disponible. PFS obligatorio, "
+            "handshake 1-RTT, sin cipher suites legacy."
+        ),
+        "recomendacion_accionable": (
+            "Mantener configuración actual y revisar periódicamente "
+            "los cipher suites activos."
+        ),
+    },
+}
+
+# ──────────────────────────────────────────────────────────────────
+# MOTOR HÍBRIDO — Enriquecimiento vía API con fallback local
+# ──────────────────────────────────────────────────────────────────
+API_ENRICHMENT_URL = "https://ciphersuite.info/api/cs/"
+API_TIMEOUT = 2
+
+_api_disponible: bool | None = None   # None = no testeada aún
+
+
+def _verificar_disponibilidad_api() -> bool:
+    """Hace un ping liviano a la API para cachear si está accesible."""
+    global _api_disponible
+    if _api_disponible is not None:
+        return _api_disponible
+    try:
+        req = urllib.request.Request(
+            API_ENRICHMENT_URL,
+            method="GET",
+            headers={"Accept": "application/json", "User-Agent": "ByteShield/1.0"},
+        )
+        urllib.request.urlopen(req, timeout=API_TIMEOUT)
+        _api_disponible = True
+    except (urllib.error.URLError, socket.timeout, OSError):
+        _api_disponible = False
+    return _api_disponible
+
+
+def enriquecer_desde_api(protocolo: str) -> dict | None:
+    """
+    Consulta ciphersuite.info para enriquecer la evaluación de un protocolo.
+
+    Retorna dict con metadatos adicionales o None en modo offline/air-gapped.
+    Timeout estricto de 2s para no bloquear el pipeline.
+    """
+    if not _verificar_disponibilidad_api():
+        return None
+
+    version_map: dict[str, str] = {
+        "TLS 1.0": "tls10",
+        "TLS 1.1": "tls11",
+        "TLS 1.2": "tls12",
+        "TLS 1.3": "tls13",
+    }
+    slug = version_map.get(protocolo)
+    if not slug:
+        return None
+
+    try:
+        url = f"{API_ENRICHMENT_URL}?tls={slug}"
+        req = urllib.request.Request(
+            url,
+            method="GET",
+            headers={"Accept": "application/json", "User-Agent": "ByteShield/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=API_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        total = len(data.get("ciphersuites", []))
+        insecure = sum(
+            1 for cs in data.get("ciphersuites", [])
+            if "insecure" in str(cs.get("security", "")).lower()
+        )
+        return {
+            "fuente": "ciphersuite.info",
+            "total_suites": total,
+            "suites_inseguras": insecure,
+        }
+    except (urllib.error.URLError, socket.timeout, OSError,
+            json.JSONDecodeError, KeyError):
+        return None
+
+
+# ──────────────────────────────────────────────────────────────────
+# EVALUADOR DE CRITICIDAD (data-driven, desacoplado)
+# ──────────────────────────────────────────────────────────────────
+
+def _nivel_maximo(niveles: list[str]) -> str:
+    """Retorna el nivel de mayor prioridad de la lista."""
+    if not niveles:
+        return NIVEL_MEDIO
+    return max(niveles, key=lambda n: NIVEL_PRIORIDAD.get(n, 0))
+
+
+def _formatear_hallazgo(protocolo: str, estandar: dict,
+                        api_data: dict | None = None) -> str:
+    """Genera string de hallazgo con referencia legal/técnica."""
+    fuente = estandar["fuente_oficial"].split(",")[0].strip()
+    if api_data:
+        fuente = f"{fuente} + {api_data['fuente']}"
+    texto = f"[{fuente}] {protocolo} habilitado — {estandar['motivo_tecnico']}"
+    if api_data and api_data.get("suites_inseguras", 0) > 0:
+        texto += (
+            f" ({api_data['suites_inseguras']}/{api_data['total_suites']} "
+            f"cipher suites marcadas como inseguras)"
+        )
+    return texto
+
+
 def calcular_criticidad(resultados_tls: dict) -> tuple[str, list[str], list[str]]:
     """
-    Aplica la lógica de criticidad del reto:
-      - CRÍTICO : acepta TLS 1.0 o TLS 1.1
-      - MEDIO   : acepta TLS 1.2 pero NO tiene TLS 1.3
-      - SEGURO  : TLS 1.3 activo y sin versiones obsoletas
+    Motor de evaluación Compliance-as-Code.
 
-    Retorna (nivel, hallazgos[], recomendaciones[])
+    Cruza los resultados del escaneo TLS con ESTANDARES_CUMPLIMIENTO
+    y opcionalmente enriquece con datos de ciphersuite.info (fallback
+    offline si no hay red).
+
+    Retorna (nivel, hallazgos[], recomendaciones[]) — firma preservada
+    para compatibilidad con dashboard.py.
     """
-    tls10   = resultados_tls.get("TLS 1.0", {}).get("habilitado", False)
-    tls11   = resultados_tls.get("TLS 1.1", {}).get("habilitado", False)
-    tls12   = resultados_tls.get("TLS 1.2", {}).get("habilitado", False)
-    tls13   = resultados_tls.get("TLS 1.3", {}).get("habilitado", False)
+    hallazgos:       list[str] = []
+    recomendaciones: list[str] = []
+    niveles_detectados: list[str] = []
 
-    hallazgos       = []
-    recomendaciones = []
+    tls13_habilitado = resultados_tls.get("TLS 1.3", {}).get("habilitado", False)
+    tls12_habilitado = resultados_tls.get("TLS 1.2", {}).get("habilitado", False)
 
-    # ── Detectar hallazgos ──────────────────────────────────────
-    if tls10:
-        hallazgos.append("TLS 1.0 habilitado — protocolo obsoleto desde 2018 (RFC 8996).")
-        recomendaciones.append("Deshabilitar TLS 1.0 en la configuración del servidor "
-                               "(nginx: ssl_protocols TLSv1.2 TLSv1.3;).")
-    if tls11:
-        hallazgos.append("TLS 1.1 habilitado — deprecado formalmente (RFC 8996).")
-        recomendaciones.append("Deshabilitar TLS 1.1 para evitar ataques de degradación "
-                               "criptográfica (POODLE, BEAST).")
-    if tls12 and not tls13:
-        hallazgos.append("TLS 1.2 activo pero TLS 1.3 ausente — configuración subóptima.")
-        recomendaciones.append("Habilitar TLS 1.3 para cifrado con Perfect Forward Secrecy "
-                               "y handshake más rápido.")
-    if not tls12 and not tls13:
-        hallazgos.append("Ni TLS 1.2 ni TLS 1.3 detectados — posible fallo de handshake "
-                         "o servicio no TLS en este puerto.")
-        recomendaciones.append("Verificar si el puerto sirve TLS o ajustar la configuración "
-                               "para soportar al menos TLS 1.2.")
+    for protocolo, estandar in ESTANDARES_CUMPLIMIENTO.items():
+        info = resultados_tls.get(protocolo, {})
+        habilitado = info.get("habilitado", False)
 
-    # ── Asignar nivel ───────────────────────────────────────────
-    if tls10 or tls11:
-        nivel = NIVEL_CRITICO
-    elif tls12 and not tls13:
-        nivel = NIVEL_MEDIO
-    elif tls13:
-        nivel = NIVEL_SEGURO
-        if not hallazgos:
-            hallazgos.append("TLS 1.3 implementado. Sin protocolos obsoletos detectados.")
-            recomendaciones.append("Mantener configuración actual y revisar periódicamente "
-                                   "los cipher suites activos.")
-    else:
-        nivel = NIVEL_MEDIO  # incertidumbre
+        if not habilitado:
+            continue
 
-    return nivel, hallazgos, recomendaciones
+        nivel_estandar = estandar["nivel"]
+
+        # Protocolos marcados como CRÍTICO por RFC 8996 → hallazgo automático
+        if nivel_estandar == NIVEL_CRITICO:
+            api_data = enriquecer_desde_api(protocolo)
+            hallazgos.append(_formatear_hallazgo(protocolo, estandar, api_data))
+            recomendaciones.append(estandar["recomendacion_accionable"])
+            niveles_detectados.append(NIVEL_CRITICO)
+
+        # TLS 1.2 presente pero sin TLS 1.3 → alerta MEDIO
+        elif protocolo == "TLS 1.2" and not tls13_habilitado:
+            alerta = estandar.get("alerta_sin_tls13", {})
+            if alerta:
+                fuente = alerta.get("fuente_oficial", estandar["fuente_oficial"])
+                fuente_short = fuente.split(",")[0].strip()
+                hallazgos.append(
+                    f"[{fuente_short}] {alerta['motivo_tecnico']}"
+                )
+                recomendaciones.append(alerta["recomendacion_accionable"])
+                niveles_detectados.append(alerta["nivel"])
+
+    # Caso especial: ningún protocolo moderno detectado
+    if not tls12_habilitado and not tls13_habilitado:
+        hallazgos.append(
+            "[NIST SP 800-52] Ni TLS 1.2 ni TLS 1.3 detectados — "
+            "posible fallo de handshake o servicio no TLS en este puerto."
+        )
+        recomendaciones.append(
+            "Verificar si el puerto sirve TLS o ajustar la configuración "
+            "para soportar al menos TLS 1.2."
+        )
+        niveles_detectados.append(NIVEL_MEDIO)
+
+    # Caso seguro: TLS 1.3 activo sin hallazgos
+    if tls13_habilitado and not hallazgos:
+        hallazgos.append(
+            "[RFC 8446] TLS 1.3 implementado. Sin protocolos obsoletos detectados."
+        )
+        recomendaciones.append(
+            ESTANDARES_CUMPLIMIENTO["TLS 1.3"]["recomendacion_accionable"]
+        )
+        niveles_detectados.append(NIVEL_SEGURO)
+
+    nivel_final = _nivel_maximo(niveles_detectados)
+    return nivel_final, hallazgos, recomendaciones
 
 
 # ══════════════════════════════════════════════════════════════════

@@ -103,9 +103,19 @@ function nivelClass(nivel) {
   return 'seguro';
 }
 
+const PROTO_DANGER = ['TLS 1.0', 'TLS 1.1'];
+const PROTO_WARN   = ['TLS 1.2'];
+
+function protoClass(name, enabled) {
+  if (!enabled) return 'proto-disabled';
+  if (PROTO_DANGER.includes(name)) return 'proto-danger';
+  if (PROTO_WARN.includes(name))   return 'proto-warn';
+  return 'proto-safe';
+}
+
 function renderProtocolBox(name, info) {
   const enabled = info && info.habilitado;
-  const cls = enabled ? 'proto-enabled' : 'proto-disabled';
+  const cls    = protoClass(name, enabled);
   const status = enabled ? 'ENABLED' : 'DISABLED';
   return `<div class="protocol-box ${cls}">
     <div class="proto-name">${name}</div>
@@ -195,10 +205,11 @@ async function iniciarScan() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let scanDone = false;
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done || scanDone) break;
 
       buffer += decoder.decode(value, { stream: true });
 
@@ -213,7 +224,7 @@ async function iniciarScan() {
 
         try {
           const event = JSON.parse(jsonStr);
-          handleEvent(event);
+          if (handleEvent(event)) { scanDone = true; reader.cancel(); break; }
         } catch (e) {
           // skip malformed
         }
@@ -270,7 +281,7 @@ function handleEvent(event) {
     case 'done':
       elExportSec.classList.remove('hidden');
       log(`Escaneo completado: ${event.total_results} resultado(s)`, 'log-ok');
-      break;
+      return true;
   }
 }
 

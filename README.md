@@ -17,29 +17,96 @@ Muchos servidores web tienen HTTPS activo pero configuraciones TLS inseguras. Ve
 
 ## Solución
 
-Byte-Shield es un escáner defensivo que audita servidores web desde el exterior (enfoque **Blackbox**), detecta configuraciones TLS inseguras mediante handshakes forzados, clasifica hallazgos por criticidad y genera reportes con recomendaciones accionables.
+Byte-Shield es un escáner defensivo que audita servidores web desde el exterior (enfoque **Blackbox**), detecta configuraciones TLS inseguras mediante handshakes forzados, clasifica hallazgos por criticidad con referencias legales/técnicas oficiales, y genera reportes accionables.
 
 ---
 
 ## Arquitectura del Pipeline
 
 ```
-┌─────────────┐    ┌──────────────┐    ┌──────────────┐    ┌─────────────┐
-│   INGESTA   │───▶│  MOTOR TLS   │───▶│   REGLAS     │───▶│  REPORTE    │
-│             │    │              │    │              │    │             │
-│ • Host/IP   │    │ • Handshake  │    │ • Criticidad │    │ • JSON      │
-│ • Puertos   │    │   forzado    │    │ • Hallazgos  │    │ • CSV       │
-│ • Validación│    │ • TLS 1.0-1.3│    │ • Remediación│    │ • HTML      │
-│ • Batch     │    │ • Por versión│    │              │    │ • Dashboard │
-└─────────────┘    └──────────────┘    └──────────────┘    └─────────────┘
+┌─────────────┐    ┌──────────────┐    ┌──────────────────────┐    ┌─────────────┐
+│   INGESTA   │───▶│  MOTOR TLS   │───▶│  MOTOR DE REGLAS     │───▶│  REPORTE    │
+│             │    │              │    │  (Compliance-as-Code)│    │             │
+│ • Host/IP   │    │ • Handshake  │    │ • ESTANDARES dict    │    │ • JSON      │
+│ • Puertos   │    │   forzado    │    │ • Motor híbrido API  │    │ • CSV       │
+│ • Validación│    │ • TLS 1.0-1.3│    │   + fallback local   │    │ • HTML      │
+│ • Batch     │    │ • Por versión│    │ • Refs RFC/NIST      │    │ • Dashboard │
+└─────────────┘    └──────────────┘    └──────────────────────┘    └─────────────┘
 ```
 
 | Fase | Descripción | Módulo |
 |------|-------------|--------|
-| **Ingesta** | Validación de targets (IP/dominio), resolución DNS, carga batch desde archivo | `tls_scanner.py` — funciones `validar_objetivo()`, `cargar_targets()` |
-| **Motor TLS** | Handshakes forzados por versión (TLS 1.0, 1.1, 1.2, 1.3) usando `ssl` + `socket` | `tls_scanner.py` — funciones `probar_protocolo_tls()`, `auditar_tls_en_puerto()` |
-| **Reglas** | Clasificación de criticidad (CRÍTICO/MEDIO/SEGURO) con hallazgos y remediación | `tls_scanner.py` — función `calcular_criticidad()` |
-| **Reporte** | Salida en JSON, CSV, HTML y dashboard web interactivo | `generar_reporte.py`, `dashboard.py` |
+| **Ingesta** | Validación de targets (IP/dominio), resolución DNS, carga batch desde archivo | `tls_scanner.py` — `validar_objetivo()`, `cargar_targets()` |
+| **Motor TLS** | Handshakes forzados por versión (TLS 1.0–1.3) usando `ssl` + `socket` | `tls_scanner.py` — `probar_protocolo_tls()`, `auditar_tls_en_puerto()` |
+| **Motor de Reglas** | Compliance-as-Code: diccionario `ESTANDARES_CUMPLIMIENTO` + enriquecimiento híbrido API/local | `tls_scanner.py` — `calcular_criticidad()` |
+| **Reporte** | Salida en JSON, CSV, HTML y dashboard web interactivo en tiempo real | `generar_reporte.py`, `dashboard.py` |
+
+---
+
+## Motor de Reglas — Compliance-as-Code
+
+### Fuente de verdad: `ESTANDARES_CUMPLIMIENTO`
+
+Toda la lógica de clasificación reside en un único diccionario estructurado — sin condicionales hardcodeados. Cada entrada de protocolo incluye:
+
+| Campo | Descripción |
+|-------|-------------|
+| `nivel` | Criticidad base: `CRÍTICO`, `MEDIO` o `SEGURO` |
+| `fuente_oficial` | Referencia normativa (RFC, NIST SP) |
+| `motivo_tecnico` | Justificación técnica del riesgo |
+| `recomendacion_accionable` | Acción concreta para remediar |
+
+```
+TLS 1.0  ──▶  CRÍTICO  [RFC 8996, NIST SP 800-52 Rev.2]  POODLE / BEAST / sin AEAD
+TLS 1.1  ──▶  CRÍTICO  [RFC 8996, NIST SP 800-52 Rev.2]  Degradación criptográfica
+TLS 1.2  ──▶  SEGURO   [RFC 5246,  NIST SP 800-52 Rev.2]  Vigente con cipher suites modernos
+            └──▶  MEDIO si TLS 1.3 está ausente   [alerta_sin_tls13]
+TLS 1.3  ──▶  SEGURO   [RFC 8446,  NIST SP 800-52 Rev.2]  PFS obligatorio, 1-RTT
+```
+
+### Motor híbrido de inteligencia
+
+`calcular_criticidad()` opera en dos modos según la conectividad:
+
+```
+                    ┌─────────────────────────────────────┐
+                    │     calcular_criticidad()           │
+                    └──────────────┬──────────────────────┘
+                                   │
+              ┌────────────────────▼────────────────────┐
+              │  _verificar_disponibilidad_api()         │
+              │  (ping liviano, cacheado por ejecución)  │
+              └────────────┬────────────────┬────────────┘
+                           │                │
+                    ✅ Online          ❌ Offline / Air-gapped
+                           │                │
+              ┌────────────▼───┐    ┌───────▼──────────────┐
+              │ ciphersuite.info│    │ ESTANDARES_CUMPLIMIENTO│
+              │ /api/cs/?tls=* │    │ (diccionario local)    │
+              │ timeout: 2s    │    │ sin red requerida      │
+              └────────────────┘    └────────────────────────┘
+                           │
+              ┌────────────▼────────────────────────────────┐
+              │  Hallazgo enriquecido:                       │
+              │  [RFC 8996 + ciphersuite.info]               │
+              │  TLS 1.0 habilitado — ... (N/M cipher suites │
+              │  marcadas como inseguras)                    │
+              └─────────────────────────────────────────────┘
+```
+
+**Comportamiento:**
+- **Online:** enriquece cada hallazgo con el conteo de cipher suites inseguras reportadas por `ciphersuite.info`. El timeout estricto de 2 s garantiza que la red nunca bloquea el pipeline.
+- **Offline / air-gapped:** usa exclusivamente el diccionario local. La evaluación es idéntica en calidad normativa.
+- La disponibilidad de la API se cachea una sola vez por ejecución (`_api_disponible`) para evitar latencia acumulada en escaneos batch.
+
+### Hallazgos con referencia legal
+
+Todos los hallazgos incluyen la fuente normativa en el prefijo:
+
+```
+[RFC 8996] TLS 1.0 habilitado — Protocolo obsoleto desde 2018...
+[RFC 8996 + ciphersuite.info] TLS 1.1 habilitado — ... (3/12 cipher suites inseguras)
+```
 
 ---
 
@@ -127,7 +194,7 @@ ngrok http 8080
 - Formulario para ingresar targets individuales o en modo batch
 - Resultados en **tiempo real** (SSE — Server-Sent Events)
 - Tarjetas visuales por servidor con estado TLS y badges de criticidad
-- Panel de resumen con contadores
+- Panel de resumen con contadores por nivel
 - Exportación directa en **JSON**, **CSV** y **HTML**
 - Tema oscuro profesional optimizado para presentaciones
 
@@ -140,6 +207,15 @@ ngrok http 8080
 | **CRÍTICO** | TLS 1.0 o TLS 1.1 habilitado | Rojo |
 | **MEDIO** | Solo TLS 1.2 sin TLS 1.3 | Amarillo |
 | **SEGURO** | TLS 1.3 activo, sin protocolos obsoletos | Verde |
+
+### Colores por protocolo en reportes y dashboard
+
+| Protocolo | Estado | Color |
+|-----------|--------|-------|
+| TLS 1.0 / TLS 1.1 | Habilitado | Rojo — peligro activo |
+| TLS 1.2 | Habilitado | Amarillo — aceptable, no óptimo |
+| TLS 1.3 | Habilitado | Verde — configuración ideal |
+| Cualquiera | Deshabilitado | Gris — neutro |
 
 ---
 
@@ -161,12 +237,12 @@ ngrok http 8080
         "TLS 1.3": { "habilitado": false, "obsoleto": false }
       },
       "hallazgos": [
-        "TLS 1.0 habilitado — protocolo obsoleto desde 2018 (RFC 8996).",
-        "TLS 1.1 habilitado — deprecado formalmente (RFC 8996)."
+        "[RFC 8996] TLS 1.0 habilitado — Protocolo obsoleto desde 2018. Vulnerable a POODLE y BEAST.",
+        "[RFC 8996] TLS 1.1 habilitado — Deprecado formalmente. Susceptible a degradación criptográfica."
       ],
       "recomendaciones": [
-        "Deshabilitar TLS 1.0 en la configuración del servidor.",
-        "Deshabilitar TLS 1.1 para evitar ataques de degradación criptográfica."
+        "Deshabilitar TLS 1.0 en la configuración del servidor (nginx: ssl_protocols TLSv1.2 TLSv1.3;).",
+        "Deshabilitar TLS 1.1 para evitar ataques de degradación criptográfica (POODLE, BEAST)."
       ]
     }
   ]
@@ -177,7 +253,7 @@ ngrok http 8080
 
 ## Integración CI/CD
 
-El scanner retorna exit codes que permiten bloquear despliegues con protocolos inseguros:
+El scanner retorna exit codes que permiten bloquear despliegues con protocolos inseguros (**Shift Left Security**):
 
 | Exit Code | Significado |
 |-----------|-------------|
@@ -204,13 +280,13 @@ byte-shield/
 ├── README.md                 # Este archivo
 ├── .gitignore                # Exclusiones de Python
 ├── requirements.txt          # Sin dependencias externas
-├── tls_scanner.py            # Motor principal — CLI
+├── tls_scanner.py            # Motor principal — CLI + Compliance-as-Code
 ├── generar_reporte.py        # Generador de reportes HTML
 ├── dashboard.py              # Dashboard web para demo en vivo
 ├── static/
 │   ├── index.html            # Frontend del dashboard
 │   ├── style.css             # Estilos (dark theme)
-│   └── app.js                # Lógica frontend (vanilla JS)
+│   └── app.js                # Lógica frontend (vanilla JS + SSE)
 ├── examples/
 │   ├── reporte.json          # Evidencia real del servidor auditado
 │   └── reporte.html          # Reporte HTML generado
@@ -226,8 +302,10 @@ byte-shield/
 |------------|------------|
 | Lenguaje | Python 3.10+ |
 | Handshakes TLS | `ssl` + `socket` (stdlib) |
+| Motor de reglas | Diccionario `ESTANDARES_CUMPLIMIENTO` + `urllib.request` (stdlib) |
 | Reportes JSON/CSV | `json` + `csv` (stdlib) |
 | Dashboard web | `http.server` + `threading` (stdlib) |
+| Streaming tiempo real | Server-Sent Events (SSE) via `http.server` |
 | Reportes HTML | Template string con CSS embebido |
 | Frontend | HTML5 + CSS3 + JavaScript vanilla |
 | Dependencias externas | **Ninguna** |

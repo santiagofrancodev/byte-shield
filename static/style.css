@@ -341,10 +341,15 @@ button {
   margin-top: 0.2rem;
 }
 
-.proto-enabled  { background: var(--critico-bg); border-color: var(--critico); }
-.proto-disabled { background: var(--seguro-bg);  border-color: var(--seguro);  }
-.proto-enabled  .proto-status { color: var(--critico); }
-.proto-disabled .proto-status { color: var(--seguro);  }
+.proto-danger   { background: var(--critico-bg);        border-color: var(--critico); }
+.proto-warn     { background: var(--medio-bg);          border-color: var(--medio);   }
+.proto-safe     { background: var(--seguro-bg);         border-color: var(--seguro);  }
+.proto-disabled { background: rgba(51,65,85,0.35);      border-color: var(--border);  }
+
+.proto-danger   .proto-status { color: var(--critico); }
+.proto-warn     .proto-status { color: var(--medio);   }
+.proto-safe     .proto-status { color: var(--seguro);  }
+.proto-disabled .proto-status { color: var(--muted);   }
 
 .findings-grid {
   display: grid;

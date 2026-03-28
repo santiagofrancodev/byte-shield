@@ -17,6 +17,19 @@ COLOR_SEGURO  = "#22c55e"
 COLOR_MAP     = {"CRÍTICO": COLOR_CRITICO, "MEDIO": COLOR_MEDIO, "SEGURO": COLOR_SEGURO}
 BADGE_MAP     = {"CRÍTICO": "🔴", "MEDIO": "🟡", "SEGURO": "🟢"}
 
+PROTO_DANGER = {"TLS 1.0", "TLS 1.1"}
+PROTO_WARN   = {"TLS 1.2"}
+
+
+def proto_class(nombre: str, habilitado: bool) -> str:
+    if not habilitado:
+        return "proto-disabled"
+    if nombre in PROTO_DANGER:
+        return "proto-danger"
+    if nombre in PROTO_WARN:
+        return "proto-warn"
+    return "proto-safe"
+
 TEMPLATE = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -125,10 +138,14 @@ TEMPLATE = """<!DOCTYPE html>
     font-family: var(--font-mono);
     margin-top: 0.25rem;
   }}
-  .enabled  {{ background: rgba(239,68,68,0.12);  border-color: var(--critico); }}
-  .disabled {{ background: rgba(34,197,94,0.12);  border-color: var(--seguro); }}
-  .enabled  .proto-status {{ color: var(--critico); }}
-  .disabled .proto-status {{ color: var(--seguro); }}
+  .proto-danger   {{ background: rgba(239,68,68,0.12);   border-color: var(--critico); }}
+  .proto-warn     {{ background: rgba(245,158,11,0.12);  border-color: var(--medio);   }}
+  .proto-safe     {{ background: rgba(34,197,94,0.12);   border-color: var(--seguro);  }}
+  .proto-disabled {{ background: rgba(51,65,85,0.35);    border-color: var(--border);  }}
+  .proto-danger   .proto-status {{ color: var(--critico); }}
+  .proto-warn     .proto-status {{ color: var(--medio);   }}
+  .proto-safe     .proto-status {{ color: var(--seguro);  }}
+  .proto-disabled .proto-status {{ color: var(--muted);   }}
 
   .findings-section h3 {{
     font-size: 0.85rem;
@@ -208,7 +225,7 @@ TEMPLATE = """<!DOCTYPE html>
 
 def tls_box(nombre: str, info: dict) -> str:
     habilitado = info.get("habilitado", False)
-    cls    = "enabled" if habilitado else "disabled"
+    cls    = proto_class(nombre, habilitado)
     status = "ENABLED" if habilitado else "DISABLED"
     return f"""<div class="protocol-box {cls}">
       <div class="proto-name">{nombre}</div>

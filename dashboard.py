@@ -228,6 +228,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
         self._sse_write(done_event)
+        self.close_connection = True
 
     def _sse_write(self, data: dict):
         """Escribe un evento SSE y hace flush."""
