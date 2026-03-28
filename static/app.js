@@ -342,9 +342,241 @@ function limpiarResultados() {
   updateSummary();
 }
 
+// ── Dependency Map ──────────────────────────────────────────────
+
+const elDepsSec     = $('#deps-section');
+const elDepsSpinner = $('#deps-spinner');
+const elDepsContent = $('#deps-content');
+
+function nivelDepClass(nivel) {
+  if (nivel === 'CRÍTICO')     return 'critico';
+  if (nivel === 'MEDIO')       return 'medio';
+  if (nivel === 'SEGURO')      return 'seguro';
+  return 'muted';
+}
+
+function renderDepRow(dep) {
+  const nc   = nivelDepClass(dep.nivel);
+  const t10  = dep.tls_1_0 ? '<span class="dep-proto dep-proto-danger">1.0</span>' : '<span class="dep-proto dep-proto-off">1.0</span>';
+  const t11  = dep.tls_1_1 ? '<span class="dep-proto dep-proto-danger">1.1</span>' : '<span class="dep-proto dep-proto-off">1.1</span>';
+  const t12  = dep.tls_1_2 ? '<span class="dep-proto dep-proto-warn">1.2</span>'   : '<span class="dep-proto dep-proto-off">1.2</span>';
+  const t13  = dep.tls_1_3 ? '<span class="dep-proto dep-proto-safe">1.3</span>'   : '<span class="dep-proto dep-proto-off">1.3</span>';
+  const badge = dep.nivel !== 'DESCONOCIDO'
+    ? `<span class="badge badge-${nc}">${dep.nivel}</span>`
+    : `<span class="badge" style="color:var(--muted);border-color:var(--border)">—</span>`;
+  return `<tr class="dep-row">
+    <td class="dep-host">${dep.host}</td>
+    <td>${badge}</td>
+    <td class="dep-protos">${t10}${t11}${t12}${t13}</td>
+    <td class="dep-finding">${dep.hallazgos[0] || '—'}</td>
+  </tr>`;
+}
+
+async function mapearDependencias() {
+  if (scanResults.length === 0) {
+    log('Primero ejecuta un escaneo para poder mapear dependencias.', 'log-warn');
+    return;
+  }
+
+  const primer = scanResults[0];
+  const host   = primer.host;
+  const puerto = primer.puerto;
+
+  elDepsSec.classList.remove('hidden');
+  elDepsSpinner.classList.remove('hidden');
+  elDepsContent.innerHTML = '';
+  log(`Mapeando dependencias de ${host}:${puerto}...`, 'log-info');
+
+  try {
+    // #region agent log H-browser
+    fetch('http://127.0.0.1:7551/ingest/e1d1fb6d-525f-4300-8155-d9973b41fef4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'138a82'},body:JSON.stringify({sessionId:'138a82',location:'app.js:mapearDependencias',message:'before_fetch',data:{origin:window.location.origin,path:window.location.pathname},timestamp:Date.now(),hypothesisId:'H-browser'})}).catch(()=>{});
+    // #endregion
+    const response = await fetch('/api/dependency-map', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, puerto }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      log(`Error en mapeo: ${data.error}`, 'log-error');
+      elDepsContent.innerHTML = `<p class="ai-error">${data.error}</p>`;
+      return;
+    }
+
+    const fuentes = data.fuentes.length
+      ? data.fuentes.map(f => f === 'cert' ? 'Certificado TLS (SAN)' : 'Certificate Transparency (crt.sh)').join(' + ')
+      : 'Sin fuentes disponibles (offline)';
+
+    const total    = data.todos.length;
+    const criticos = data.dependencias_escaneadas.filter(d => d.nivel === 'CRÍTICO').length;
+
+    let html = `<div class="deps-meta">
+      <span>Dominio base: <strong>${data.dominio_base}</strong></span>
+      <span>Fuentes: <strong>${fuentes}</strong></span>
+      <span>Dependencias descubiertas: <strong>${total}</strong></span>
+      ${criticos > 0 ? `<span class="dep-alert">&#9888; ${criticos} con hallazgos CRÍTICOS</span>` : ''}
+    </div>`;
+
+    if (data.dependencias_escaneadas.length === 0) {
+      html += '<p class="deps-empty">No se descubrieron dependencias para este host.</p>';
+    } else {
+      html += `<div class="deps-table-wrap"><table class="deps-table">
+        <thead><tr>
+          <th>Host</th><th>Nivel</th><th>Protocolos</th><th>Hallazgo principal</th>
+        </tr></thead>
+        <tbody>${data.dependencias_escaneadas.map(renderDepRow).join('')}</tbody>
+      </table></div>`;
+    }
+
+    elDepsContent.innerHTML = html;
+    log(`Mapeo completado: ${total} dependencias, ${criticos} críticas.`,
+        criticos > 0 ? 'log-error' : 'log-ok');
+
+  } catch (err) {
+    log(`Error al mapear dependencias: ${err.message}`, 'log-error');
+    elDepsContent.innerHTML = `<p class="ai-error">Error de conexión al mapear dependencias.</p>`;
+  } finally {
+    elDepsSpinner.classList.add('hidden');
+  }
+}
+
+// ── AI Analysis ─────────────────────────────────────────────────
+
+const elAISec     = $('#ai-section');
+const elAISpinner = $('#ai-spinner');
+const elAIText    = $('#ai-text');
+
+function renderAIText(raw) {
+  return raw
+    .split('\n')
+    .map(line => {
+      line = line.trim();
+      if (!line) return '';
+      if (/^#{1,3}\s/.test(line)) {
+        return `<p class="ai-heading">${line.replace(/^#+\s*/, '')}</p>`;
+      }
+      if (/^\d+\.\s/.test(line) || /^[-*]\s/.test(line)) {
+        return `<p class="ai-bullet">${line.replace(/^[-*\d.]\s*/, '')}</p>`;
+      }
+      return `<p>${line}</p>`;
+    })
+    .join('');
+}
+
+async function analizarConIA() {
+  if (scanResults.length === 0) {
+    log('No hay resultados para analizar.', 'log-warn');
+    return;
+  }
+
+  elAISec.classList.remove('hidden');
+  elAISpinner.classList.remove('hidden');
+  elAIText.innerHTML = '';
+  log('Enviando hallazgos al modelo de IA...', 'log-info');
+
+  try {
+    // #region agent log H-browser
+    fetch('http://127.0.0.1:7551/ingest/e1d1fb6d-525f-4300-8155-d9973b41fef4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'138a82'},body:JSON.stringify({sessionId:'138a82',location:'app.js:analizarConIA',message:'before_fetch',data:{origin:window.location.origin},timestamp:Date.now(),hypothesisId:'H-browser'})}).catch(()=>{});
+    // #endregion
+    const response = await fetch('/api/ai-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resultados: scanResults }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      log(`Error IA: ${data.error}`, 'log-error');
+      elAIText.innerHTML = `<p class="ai-error">${data.error}</p>`;
+      return;
+    }
+
+    elAIText.innerHTML = renderAIText(data.analysis);
+    log('Análisis IA completado.', 'log-ok');
+  } catch (err) {
+    log(`Error al contactar el modelo: ${err.message}`, 'log-error');
+    elAIText.innerHTML = `<p class="ai-error">No se pudo conectar con el modelo de IA.</p>`;
+  } finally {
+    elAISpinner.classList.add('hidden');
+  }
+}
+
+// ── Email Modal ──────────────────────────────────────────────────
+
+const elEmailOverlay = $('#email-modal-overlay');
+const elEmailInput   = $('#email-input');
+const elEmailStatus  = $('#email-status');
+const elBtnSendEmail = $('#btn-send-email');
+
+function mostrarEmailModal() {
+  if (scanResults.length === 0) {
+    log('No hay resultados para enviar.', 'log-warn');
+    return;
+  }
+  elEmailStatus.classList.add('hidden');
+  elEmailStatus.textContent = '';
+  elEmailInput.value = '';
+  elEmailOverlay.classList.remove('hidden');
+  setTimeout(() => elEmailInput.focus(), 50);
+}
+
+function cerrarEmailModal(e) {
+  if (e && e.target !== elEmailOverlay) return;
+  elEmailOverlay.classList.add('hidden');
+}
+
+async function enviarEmail() {
+  const destinatario = elEmailInput.value.trim();
+  if (!destinatario) {
+    elEmailInput.focus();
+    return;
+  }
+
+  elBtnSendEmail.disabled = true;
+  elBtnSendEmail.textContent = 'Enviando...';
+  elEmailStatus.classList.add('hidden');
+
+  try {
+    // #region agent log H-browser
+    fetch('http://127.0.0.1:7551/ingest/e1d1fb6d-525f-4300-8155-d9973b41fef4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'138a82'},body:JSON.stringify({sessionId:'138a82',location:'app.js:enviarEmail',message:'before_fetch',data:{origin:window.location.origin},timestamp:Date.now(),hypothesisId:'H-browser'})}).catch(()=>{});
+    // #endregion
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destinatario, resultados: scanResults }),
+    });
+
+    const data = await response.json();
+
+    elEmailStatus.classList.remove('hidden');
+    if (response.ok && data.ok) {
+      elEmailStatus.className = 'email-status email-status-ok';
+      elEmailStatus.textContent = `Reporte enviado a ${destinatario}`;
+      log(`Reporte enviado por email a ${destinatario}`, 'log-ok');
+      setTimeout(() => elEmailOverlay.classList.add('hidden'), 2000);
+    } else {
+      elEmailStatus.className = 'email-status email-status-error';
+      elEmailStatus.textContent = data.error || 'Error al enviar el email.';
+      log(`Error email: ${data.error}`, 'log-error');
+    }
+  } catch (err) {
+    elEmailStatus.classList.remove('hidden');
+    elEmailStatus.className = 'email-status email-status-error';
+    elEmailStatus.textContent = 'Error de conexión al enviar el email.';
+    log(`Error email: ${err.message}`, 'log-error');
+  } finally {
+    elBtnSendEmail.disabled = false;
+    elBtnSendEmail.textContent = 'Enviar';
+  }
+}
+
 // ── Keyboard shortcut ───────────────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') cerrarEmailModal();
   if (e.key === 'Enter' && !isScanning && document.activeElement !== elBatchInput) {
     iniciarScan();
   }

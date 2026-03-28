@@ -92,3 +92,17 @@
 {"sessionId":"138a82","location":"app.js:handleEvent:done","message":"done event received - returning true to break loop","data":{"total_results":3,"isScanning":true},"runId":"run3","hypothesisId":"H7-H8-fix","timestamp":1774726644903}
 {"sessionId":"138a82","location":"app.js:iniciarScan:loop","message":"reader.read() returned","data":{"streamDone":true,"scanDone":true},"runId":"run3","hypothesisId":"H6-fix","timestamp":1774726644904}
 {"sessionId":"138a82","location":"app.js:setScanning","message":"setScanning called","data":{"active":false},"runId":"run2","hypothesisId":"H8","timestamp":1774726644904}
+{"sessionId":"138a82","location":"app.js:mapearDependencias","message":"before_fetch","data":{"origin":"http://localhost:8080","path":"/"},"timestamp":1774731818904,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:enviarEmail","message":"before_fetch","data":{"origin":"http://localhost:8080"},"timestamp":1774731836637,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:analizarConIA","message":"before_fetch","data":{"origin":"http://localhost:8080"},"timestamp":1774731866926,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:analizarConIA","message":"before_fetch","data":{"origin":"http://localhost:8080"},"timestamp":1774732120094,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:mapearDependencias","message":"before_fetch","data":{"origin":"http://localhost:8080","path":"/"},"timestamp":1774732125445,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:mapearDependencias","message":"before_fetch","data":{"origin":"http://localhost:8080","path":"/"},"timestamp":1774732170917,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:analizarConIA","message":"before_fetch","data":{"origin":"http://localhost:8080"},"timestamp":1774732194358,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:enviarEmail","message":"before_fetch","data":{"origin":"http://localhost:8080"},"timestamp":1774732202829,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:mapearDependencias","message":"before_fetch","data":{"origin":"http://localhost:8080","path":"/"},"timestamp":1774732351901,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:mapearDependencias","message":"before_fetch","data":{"origin":"http://localhost:8080","path":"/"},"timestamp":1774732384838,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:analizarConIA","message":"before_fetch","data":{"origin":"http://localhost:8080"},"timestamp":1774732494542,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:analizarConIA","message":"before_fetch","data":{"origin":"http://localhost:8080"},"timestamp":1774732914343,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:mapearDependencias","message":"before_fetch","data":{"origin":"http://localhost:8080","path":"/"},"timestamp":1774732939966,"hypothesisId":"H-browser"}
+{"sessionId":"138a82","location":"app.js:enviarEmail","message":"before_fetch","data":{"origin":"http://localhost:8080"},"timestamp":1774732980470,"hypothesisId":"H-browser"}

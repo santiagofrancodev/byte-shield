@@ -251,6 +251,98 @@ ngrok http 8080
 
 ---
 
+## Mapeo de Dependencias Criptográficas
+
+Byte-Shield puede descubrir automáticamente infraestructura relacionada con el host auditado e identificar si esas dependencias mantienen el mismo estándar de seguridad TLS.
+
+### ¿Por qué importa?
+
+El "Espejismo del HTTPS": la URL principal puede tener TLS 1.3, pero si llama a subdominios con TLS 1.0, un atacante puede interceptar esos recursos e inyectar código malicioso antes de que llegue al usuario.
+
+### Fuentes de descubrimiento (cero dependencias externas)
+
+```
+Host escaneado: empresa.com:443
+        │
+        ├── [Fuente 1] Certificado TLS — SANs (ssl.getpeercert, stdlib)
+        │     └── empresa.com, api.empresa.com, dev.empresa.com, ...
+        │
+        └── [Fuente 2] Certificate Transparency Logs (urllib.request → crt.sh)
+              └── staging.empresa.com, vpn.empresa.com, ...
+                         │
+                         ▼
+              Auto-escaneo TLS de cada dependencia descubierta
+                         │
+                         ▼
+              "dev.empresa.com — CRÍTICO — TLS 1.0 habilitado"
+```
+
+| Fuente | Tecnología | Requiere red |
+|--------|-----------|--------------|
+| SANs del certificado | `ssl.getpeercert()` (stdlib) | Solo al host objetivo |
+| Certificate Transparency | `urllib.request` → `crt.sh` | Internet (con fallback offline) |
+
+**Comportamiento offline:** si `crt.sh` no responde, se usan únicamente los SANs del certificado TLS. El análisis continúa sin errores.
+
+El botón "Mapa de Dependencias" aparece en el dashboard tras completar un escaneo y analiza automáticamente hasta 10 dependencias descubiertas.
+
+---
+
+## Análisis con Inteligencia Artificial
+
+Byte-Shield puede enriquecer los hallazgos con un análisis ejecutivo generado por IA (Gemini o OpenAI), visible directamente en el dashboard tras el escaneo.
+
+### Configuración
+
+```bash
+# Proveedor: gemini (default) u openai
+export BYTESHIELD_AI_KEY="tu_api_key_aqui"
+export BYTESHIELD_AI_PROVIDER="gemini"   # o "openai"
+
+python3 dashboard.py --port 8080
+```
+
+| Variable | Descripción | Default |
+|----------|-------------|---------|
+| `BYTESHIELD_AI_KEY` | API key del proveedor (requerida) | — |
+| `BYTESHIELD_AI_PROVIDER` | `gemini` o `openai` | `gemini` |
+
+**Comportamiento:**
+- Sin `BYTESHIELD_AI_KEY`: el botón "Análisis IA" retorna un error descriptivo — el resto del dashboard funciona con normalidad.
+- Con clave: envía los hallazgos del escaneo al modelo y muestra un resumen ejecutivo con impacto de negocio, riesgos priorizados y plan de acción.
+- Sin dependencias externas: usa `urllib.request` (stdlib), igual que el motor híbrido de `ciphersuite.info`.
+- Timeout de 20 s para no bloquear el pipeline.
+
+---
+
+## Envío de Reporte por Email
+
+El reporte completo (HTML como cuerpo + JSON adjunto) se puede enviar directamente desde el dashboard.
+
+### Configuración
+
+```bash
+export BYTESHIELD_SMTP_HOST="smtp.gmail.com"   # default
+export BYTESHIELD_SMTP_PORT="587"              # default
+export BYTESHIELD_SMTP_USER="tu_cuenta@gmail.com"
+export BYTESHIELD_SMTP_PASS="tu_app_password"
+
+python3 dashboard.py --port 8080
+```
+
+| Variable | Descripción | Default |
+|----------|-------------|---------|
+| `BYTESHIELD_SMTP_HOST` | Servidor SMTP | `smtp.gmail.com` |
+| `BYTESHIELD_SMTP_PORT` | Puerto SMTP | `587` |
+| `BYTESHIELD_SMTP_USER` | Email del remitente (requerido) | — |
+| `BYTESHIELD_SMTP_PASS` | Contraseña de app SMTP (requerida) | — |
+
+> Para Gmail, genera una **App Password** en tu cuenta Google (Seguridad → Verificación en 2 pasos → Contraseñas de aplicaciones).
+
+**Sin dependencias externas:** usa `smtplib` + `email.mime` (stdlib Python).
+
+---
+
 ## Integración CI/CD
 
 El scanner retorna exit codes que permiten bloquear despliegues con protocolos inseguros (**Shift Left Security**):
@@ -303,6 +395,9 @@ byte-shield/
 | Lenguaje | Python 3.10+ |
 | Handshakes TLS | `ssl` + `socket` (stdlib) |
 | Motor de reglas | Diccionario `ESTANDARES_CUMPLIMIENTO` + `urllib.request` (stdlib) |
+| Mapeo de dependencias | `ssl.getpeercert()` (SANs) + `urllib.request` → crt.sh (stdlib) |
+| Análisis con IA | `urllib.request` → Gemini 2.0 Flash / GPT-4o-mini (stdlib) |
+| Envío de email | `smtplib` + `email.mime` (stdlib) |
 | Reportes JSON/CSV | `json` + `csv` (stdlib) |
 | Dashboard web | `http.server` + `threading` (stdlib) |
 | Streaming tiempo real | Server-Sent Events (SSE) via `http.server` |

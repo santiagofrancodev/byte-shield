@@ -97,6 +97,35 @@
         <button class="btn-export btn-html" onclick="exportar('html')">
           <span class="export-icon">&lt;/&gt;</span> HTML
         </button>
+        <button class="btn-export btn-ai" onclick="analizarConIA()">
+          <span class="export-icon">&#10022;</span> Análisis IA
+        </button>
+        <button class="btn-export btn-email" onclick="mostrarEmailModal()">
+          <span class="export-icon">&#9993;</span> Enviar Email
+        </button>
+        <button class="btn-export btn-deps" onclick="mapearDependencias()">
+          <span class="export-icon">&#9906;</span> Mapa de Dependencias
+        </button>
+      </div>
+    </section>
+
+    <!-- Mapa de Dependencias -->
+    <section id="deps-section" class="deps-section hidden">
+      <h2 class="section-title">Mapa de Dependencias Criptográficas</h2>
+      <div id="deps-spinner" class="ai-spinner hidden">
+        <span class="ai-spinner-icon">&#9680;</span> Descubriendo dependencias...
+      </div>
+      <div id="deps-content"></div>
+    </section>
+
+    <!-- Análisis IA -->
+    <section id="ai-section" class="ai-section hidden">
+      <h2 class="section-title">Análisis Ejecutivo — Inteligencia Artificial</h2>
+      <div id="ai-content" class="ai-content">
+        <div id="ai-spinner" class="ai-spinner hidden">
+          <span class="ai-spinner-icon">&#9680;</span> Consultando modelo de IA...
+        </div>
+        <div id="ai-text" class="ai-text"></div>
       </div>
     </section>
 
@@ -106,6 +135,25 @@
       <div id="log-container" class="log-container"></div>
     </section>
   </main>
+
+  <!-- Modal Email -->
+  <div id="email-modal-overlay" class="modal-overlay hidden" onclick="cerrarEmailModal(event)">
+    <div class="email-modal">
+      <h3 class="modal-title">&#9993; Enviar Reporte por Email</h3>
+      <p class="modal-desc">El reporte HTML y el JSON se adjuntarán automáticamente.</p>
+      <div class="modal-field">
+        <label for="email-input">Destinatario</label>
+        <input type="email" id="email-input" placeholder="ciso@empresa.com" autocomplete="off">
+      </div>
+      <div id="email-status" class="email-status hidden"></div>
+      <div class="modal-buttons">
+        <button id="btn-send-email" class="btn-primary-modal" onclick="enviarEmail()">
+          Enviar
+        </button>
+        <button class="btn-secondary-modal" onclick="cerrarEmailModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
 
   <footer>
     <p>Byte-Shield v1.0 &mdash; Solo librerías estándar de Python &mdash; Análisis defensivo, sin explotación</p>

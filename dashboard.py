@@ -13,10 +13,15 @@ import csv
 import io
 import os
 import sys
+import smtplib
 import datetime
 import argparse
 import threading
 import mimetypes
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
@@ -26,12 +31,74 @@ from tls_scanner import (
     escanear_puerto,
     auditar_tls_en_puerto,
     calcular_criticidad,
+    analizar_con_ia,
+    mapear_dependencias,
     CONNECT_TIMEOUT,
 )
 from generar_reporte import generar_html
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+
+
+def _load_dotenv():
+    """Carga variables de entorno desde .env (stdlib puro, sin dependencias).
+
+    Si la misma clave aparece varias veces en el archivo, gana la última línea.
+    No sobrescribe variables que ya existían en el entorno del proceso antes de cargar.
+    """
+    env_path = BASE_DIR / ".env"
+    if not env_path.exists():
+        return
+    parsed: dict[str, str] = {}
+    with env_path.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                parsed[key] = value
+    for key, value in parsed.items():
+        if key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv()
+
+# #region agent log startup
+import time as _time
+def _dbg(msg: str, data: dict = None, hypothesis_id: str = "H1") -> None:
+    """Escribe una línea NDJSON al log de debug."""
+    import json as _json
+    entry = {
+        "sessionId": "138a82",
+        "timestamp": int(_time.time() * 1000),
+        "location": "dashboard.py",
+        "message": msg,
+        "data": data or {},
+        "hypothesisId": hypothesis_id,
+    }
+    try:
+        log_path = BASE_DIR / "debug-138a82.log"
+        with open(log_path, "a", encoding="utf-8") as _fh:
+            _fh.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+_dbg("SERVER_STARTUP", {
+    "pid": os.getpid(),
+    "endpoints_registered": [
+        "/api/scan/stream", "/api/export/json", "/api/export/csv",
+        "/api/export/html", "/api/ai-analysis", "/api/send-email",
+        "/api/dependency-map"
+    ],
+    "ai_key_set": bool(os.environ.get("BYTESHIELD_AI_KEY")),
+    "smtp_host_set": bool(os.environ.get("BYTESHIELD_SMTP_HOST")),
+}, "H2")
+# #endregion
 
 scan_history: list[dict] = []
 scan_lock = threading.Lock()
@@ -104,6 +171,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             f"  \033[90m[{self.log_date_time_string()}]\033[0m "
             f"{format % args}\n"
         )
+        sys.stderr.flush()
 
     # ── GET ──────────────────────────────────────────────────────
 
@@ -123,6 +191,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_error(404, "Archivo no encontrado")
         elif path == "/api/history":
             self._send_json(200, scan_history)
+        elif path == "/api/server-info":
+            # Diagnóstico: confirma que el navegador habla con ESTE proceso (mismo código que los POST nuevos).
+            self._send_json(200, {
+                "servicio": "byte-shield-dashboard",
+                "pid": os.getpid(),
+                "dashboard_py": str(Path(__file__).resolve()),
+                "post_endpoints": [
+                    "/api/scan/stream", "/api/export/json", "/api/export/csv",
+                    "/api/export/html", "/api/ai-analysis", "/api/send-email",
+                    "/api/dependency-map",
+                ],
+            })
         else:
             self._send_error(404, "Ruta no encontrada")
 
@@ -130,7 +210,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        path = parsed.path
+        path = parsed.path.rstrip("/") or "/"
+        # #region agent log H4
+        sys.stderr.write(f"[DBG do_POST] raw={self.path!r} parsed={path!r}\n")
+        sys.stderr.flush()
+        _dbg("DO_POST_CALLED", {"raw": self.path, "parsed": path}, "H1")
+        # #endregion
 
         if path == "/api/scan/stream":
             self._handle_scan_stream()
@@ -140,7 +225,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._handle_export_csv()
         elif path == "/api/export/html":
             self._handle_export_html()
+        elif path == "/api/ai-analysis":
+            self._handle_ai_analysis()
+        elif path == "/api/send-email":
+            self._handle_send_email()
+        elif path == "/api/dependency-map":
+            self._handle_dependency_map()
         else:
+            # #region agent log H4
+            sys.stderr.write(f"[DBG 404] path={path!r} — no match\n")
+            sys.stderr.flush()
+            _dbg("DO_POST_404", {"path": path}, "H2")
+            # #endregion
             self._send_error(404, "Endpoint no encontrado")
 
     # ── Scan con streaming SSE ───────────────────────────────────
@@ -259,6 +355,141 @@ class DashboardHandler(BaseHTTPRequestHandler):
         content = results_to_html_report(resultados)
         self._send_download(content.encode("utf-8"), "reporte_byteshield.html", "text/html")
 
+    def _handle_ai_analysis(self):
+        body = self._read_body()
+        if body is None:
+            return
+        resultados = self._get_resultados(body)
+        if not resultados:
+            self._send_error(400, "No hay resultados para analizar")
+            return
+        try:
+            analysis = analizar_con_ia(resultados)
+            self._send_json(200, {"analysis": analysis})
+        except RuntimeError as e:
+            self._send_json(503, {"error": str(e)})
+
+    def _handle_send_email(self):
+        body = self._read_body()
+        if body is None:
+            return
+
+        destinatario = (body.get("destinatario") or "").strip()
+        if not destinatario:
+            self._send_error(400, "El campo 'destinatario' es requerido")
+            return
+
+        smtp_host = os.environ.get("BYTESHIELD_SMTP_HOST", "smtp.gmail.com")
+        smtp_port = int(os.environ.get("BYTESHIELD_SMTP_PORT", "587"))
+        smtp_user = os.environ.get("BYTESHIELD_SMTP_USER", "").strip()
+        smtp_pass = os.environ.get("BYTESHIELD_SMTP_PASS", "").strip()
+
+        if not smtp_user or not smtp_pass:
+            self._send_json(503, {
+                "error": "Variables BYTESHIELD_SMTP_USER y BYTESHIELD_SMTP_PASS no configuradas."
+            })
+            return
+
+        resultados = self._get_resultados(body)
+        html_content = results_to_html_report(resultados)
+        json_content = results_to_json_report(resultados)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        msg = MIMEMultipart("mixed")
+        msg["From"]    = smtp_user
+        msg["To"]      = destinatario
+        msg["Subject"] = f"Byte-Shield — Reporte de Auditoría TLS [{ts}]"
+
+        niveles = [r["nivel"] for r in resultados]
+        criticos = niveles.count("CRÍTICO")
+        medios   = niveles.count("MEDIO")
+        cuerpo_texto = (
+            f"Byte-Shield — Reporte de Auditoría TLS\n"
+            f"Generado: {datetime.datetime.now().isoformat()}\n\n"
+            f"Servidores analizados: {len(resultados)}\n"
+            f"Críticos: {criticos}  |  Medios: {medios}  |  "
+            f"Seguros: {len(resultados) - criticos - medios}\n\n"
+            f"El reporte completo en HTML y el JSON están adjuntos.\n\n"
+            f"-- Byte Security Group"
+        )
+        msg.attach(MIMEText(cuerpo_texto, "plain", "utf-8"))
+        msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+        adjunto_json = MIMEBase("application", "json")
+        adjunto_json.set_payload(json_content.encode("utf-8"))
+        encoders.encode_base64(adjunto_json)
+        adjunto_json.add_header(
+            "Content-Disposition",
+            f'attachment; filename="reporte_byteshield_{ts}.json"',
+        )
+        msg.attach(adjunto_json)
+
+        try:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                server.ehlo()
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, destinatario, msg.as_string())
+            self._send_json(200, {"ok": True, "destinatario": destinatario})
+        except smtplib.SMTPAuthenticationError:
+            self._send_json(503, {"error": "Error de autenticación SMTP. Verifica usuario y contraseña."})
+        except smtplib.SMTPException as e:
+            self._send_json(503, {"error": f"Error SMTP: {e}"})
+        except OSError as e:
+            self._send_json(503, {"error": f"Error de red al conectar con {smtp_host}: {e}"})
+
+    def _handle_dependency_map(self):
+        body = self._read_body()
+        if body is None:
+            return
+
+        host   = (body.get("host") or "").strip()
+        puerto = int(body.get("puerto") or 443)
+
+        if not host:
+            self._send_error(400, "El campo 'host' es requerido")
+            return
+
+        try:
+            validar_objetivo(host)
+        except ValueError as e:
+            self._send_error(400, str(e))
+            return
+
+        resultado = mapear_dependencias(host, puerto)
+
+        # Escanear TLS de cada dependencia descubierta (máx. 10 para no bloquear)
+        deps_escaneadas = []
+        for dep in resultado["todos"][:10]:
+            try:
+                validar_objetivo(dep)
+                tls = auditar_tls_en_puerto(dep, puerto)
+                nivel, hallazgos, _ = calcular_criticidad(tls)
+                deps_escaneadas.append({
+                    "host":      dep,
+                    "nivel":     nivel,
+                    "tls_1_0":   tls.get("TLS 1.0", {}).get("habilitado", False),
+                    "tls_1_1":   tls.get("TLS 1.1", {}).get("habilitado", False),
+                    "tls_1_2":   tls.get("TLS 1.2", {}).get("habilitado", False),
+                    "tls_1_3":   tls.get("TLS 1.3", {}).get("habilitado", False),
+                    "hallazgos": hallazgos[:2],
+                })
+            except (ValueError, OSError):
+                deps_escaneadas.append({
+                    "host":      dep,
+                    "nivel":     "DESCONOCIDO",
+                    "tls_1_0":   False,
+                    "tls_1_1":   False,
+                    "tls_1_2":   False,
+                    "tls_1_3":   False,
+                    "hallazgos": ["No se pudo conectar al host"],
+                })
+
+        self._send_json(200, {
+            **resultado,
+            "dependencias_escaneadas": deps_escaneadas,
+        })
+
     def _get_resultados(self, body: dict | None) -> list[dict]:
         """Extrae resultados del body o usa el historial."""
         if body and "resultados" in body:
@@ -320,7 +551,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 class ThreadedHTTPServer(HTTPServer):
     """HTTPServer con soporte para múltiples conexiones concurrentes."""
-    allow_reuse_address = True
+    # En Windows, SO_REUSEADDR puede permitir que otro proceso quede escuchando el mismo
+    # puerto; el tráfico entonces no llega al proceso que el usuario cree que inició.
+    allow_reuse_address = False
 
     def process_request(self, request, client_address):
         t = threading.Thread(target=self._handle, args=(request, client_address))
@@ -343,6 +576,10 @@ def main():
     args = parser.parse_args()
 
     server = ThreadedHTTPServer((args.host, args.port), DashboardHandler)
+
+    dash_path = Path(__file__).resolve()
+    print(f"\n  \033[90mPID {os.getpid()} | {dash_path}\033[0m")
+    print(f"  \033[90mDiagnóstico: GET http://localhost:{args.port}/api/server-info\033[0m\n")
 
     print(f"\n\033[1m\033[96m{'═'*60}\033[0m")
     print(f"\033[1m\033[96m  BYTE-SHIELD — Dashboard Web\033[0m")
