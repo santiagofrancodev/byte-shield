@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e ".[dev,api]"
+      - name: Ruff
+        run: ruff check src tests
+      - name: Pytest
+        run: pytest tests -q
+      - name: Docker build
+        run: docker build -t byte-shield:ci .
+
+  # Opcional: push a registro si se configuran secretos
+  # - name: Login to GHCR
+  #   uses: docker/login-action@v3
+  #   ...

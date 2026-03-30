@@ -125,7 +125,43 @@ python3 dashboard.py --port 8080
 # Abrir http://localhost:8080
 ```
 
-**No se requiere `pip install`.** Todo funciona con la biblioteca estándar de Python 3.10+.
+**Instalación como paquete (recomendado para API, agente y tests):**
+
+```bash
+pip install -e ".[api]"          # CLI: byteshield, byteshield-api, openclaw-agent
+python -m pytest tests -q
+```
+
+**Sin instalación:** `python tls_scanner.py` y `python generar_reporte.py` siguen funcionando (añaden `src/` al path automáticamente).
+
+### Uso como biblioteca
+
+```python
+from byteshield.pipeline import run_scan
+
+resultados = run_scan(
+    ["example.com"],
+    [443],
+    verbose=False,
+    trigger="comando_manual",
+)
+```
+
+### API HTTP (FastAPI)
+
+```bash
+byteshield-api   # http://0.0.0.0:8000  → POST /scan {"targets":["host"],"ports":[443]}
+```
+
+### Agente OpenClaw (superficie mínima)
+
+```bash
+openclaw-agent --target 34.45.64.235 --ports 443 --trigger cicd_hook --ci-exit
+```
+
+Variables opcionales: `BYTESHIELD_SLACK_WEBHOOK`, `BYTESHIELD_SMTP_*`, `BYTESHIELD_ALERT_EMAIL`.
+
+Ver `ejemplos/targets.json`, `CHANGELOG.md`, `helm/byteshield/`, `terraform/example/`.
 
 ---
 

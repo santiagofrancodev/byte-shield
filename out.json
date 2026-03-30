@@ -1,0 +1,136 @@
+{
+  "generado_en": "2026-03-30T00:41:05.075730+00:00",
+  "herramienta": "Byte-Shield (tls_scanner) — CloudLabs Hackathon",
+  "resultados": [
+    {
+      "host": "34.45.64.235",
+      "puerto": 80,
+      "nivel": "MEDIO",
+      "tls": {
+        "TLS 1.0": {
+          "habilitado": false,
+          "obsoleto": true
+        },
+        "TLS 1.1": {
+          "habilitado": false,
+          "obsoleto": true
+        },
+        "TLS 1.2": {
+          "habilitado": false,
+          "obsoleto": false
+        },
+        "TLS 1.3": {
+          "habilitado": false,
+          "obsoleto": false
+        }
+      },
+      "hallazgos": [
+        "[NIST SP 800-52] Ni TLS 1.2 ni TLS 1.3 detectados — posible fallo de handshake o servicio no TLS en este puerto."
+      ],
+      "recomendaciones": [
+        "Verificar si el puerto sirve TLS o ajustar la configuración para soportar al menos TLS 1.2."
+      ],
+      "timestamp": "2026-03-30T00:41:02.149513+00:00",
+      "trigger": "cicd_hook",
+      "deps_map": {
+        "executed": true,
+        "source": "discovery",
+        "blast_radius": [],
+        "dependency_chain": {},
+        "mapeo_tls": {
+          "host": "34.45.64.235",
+          "puerto": 80,
+          "dominio_base": "64.235",
+          "sans": [],
+          "crtsh": [
+            "1.172.64.235",
+            "116.204.64.235",
+            "139.59.64.235",
+            "201.248.64.235",
+            "4.144.64.235",
+            "57.180.64.235",
+            "95.40.64.235"
+          ],
+          "todos": [
+            "1.172.64.235",
+            "116.204.64.235",
+            "139.59.64.235",
+            "201.248.64.235",
+            "4.144.64.235",
+            "57.180.64.235",
+            "95.40.64.235"
+          ],
+          "fuentes": [
+            "crtsh"
+          ]
+        }
+      },
+      "deps_map_reason": null
+    },
+    {
+      "host": "34.45.64.235",
+      "puerto": 443,
+      "nivel": "MEDIO",
+      "tls": {
+        "TLS 1.0": {
+          "habilitado": false,
+          "obsoleto": true
+        },
+        "TLS 1.1": {
+          "habilitado": false,
+          "obsoleto": true
+        },
+        "TLS 1.2": {
+          "habilitado": true,
+          "obsoleto": false
+        },
+        "TLS 1.3": {
+          "habilitado": false,
+          "obsoleto": false
+        }
+      },
+      "hallazgos": [
+        "[NIST SP 800-52 Rev. 2] TLS 1.2 activo pero TLS 1.3 ausente — configuración subóptima. Se pierde handshake 0-RTT y PFS obligatorio."
+      ],
+      "recomendaciones": [
+        "Habilitar TLS 1.3 para cifrado con Perfect Forward Secrecy y handshake más rápido (1-RTT)."
+      ],
+      "timestamp": "2026-03-30T00:41:04.020461+00:00",
+      "trigger": "cicd_hook",
+      "deps_map": {
+        "executed": true,
+        "source": "discovery",
+        "blast_radius": [],
+        "dependency_chain": {},
+        "mapeo_tls": {
+          "host": "34.45.64.235",
+          "puerto": 443,
+          "dominio_base": "64.235",
+          "sans": [],
+          "crtsh": [
+            "1.172.64.235",
+            "116.204.64.235",
+            "139.59.64.235",
+            "201.248.64.235",
+            "4.144.64.235",
+            "57.180.64.235",
+            "95.40.64.235"
+          ],
+          "todos": [
+            "1.172.64.235",
+            "116.204.64.235",
+            "139.59.64.235",
+            "201.248.64.235",
+            "4.144.64.235",
+            "57.180.64.235",
+            "95.40.64.235"
+          ],
+          "fuentes": [
+            "crtsh"
+          ]
+        }
+      },
+      "deps_map_reason": null
+    }
+  ]
+}

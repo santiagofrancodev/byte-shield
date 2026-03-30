@@ -16,6 +16,7 @@ import sys
 import smtplib
 import datetime
 import argparse
+import socket
 import threading
 import mimetypes
 from email.mime.multipart import MIMEMultipart
@@ -575,7 +576,99 @@ def main():
     parser.add_argument("--host", default="0.0.0.0", help="Host de escucha (default: 0.0.0.0)")
     args = parser.parse_args()
 
-    server = ThreadedHTTPServer((args.host, args.port), DashboardHandler)
+    # #region agent log
+    _dbg_log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug-2bb79c.log")
+
+    def _agent_dbg(
+        hypothesis_id: str,
+        location: str,
+        message: str,
+        data: dict | None = None,
+        run_id: str = "pre-fix",
+    ) -> None:
+        try:
+            with open(_dbg_log, "a", encoding="utf-8") as _f:
+                _f.write(
+                    json.dumps(
+                        {
+                            "sessionId": "2bb79c",
+                            "timestamp": int(_time.time() * 1000),
+                            "location": location,
+                            "message": message,
+                            "data": data or {},
+                            "hypothesisId": hypothesis_id,
+                            "runId": run_id,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+
+    _agent_dbg(
+        "H1-H5",
+        "dashboard.py:main",
+        "args_before_bind",
+        {"host": args.host, "port": args.port, "pid": os.getpid()},
+    )
+    for _label, _addr in (
+        ("H1_H2", (args.host, args.port)),
+        ("H4", ("127.0.0.1", args.port)),
+    ):
+        try:
+            _s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            _s.bind(_addr)
+            _s.close()
+            _agent_dbg(_label, "dashboard.py:main", "probe_bind_ok", {"addr": list(_addr)})
+        except OSError as _e:
+            _agent_dbg(
+                _label,
+                "dashboard.py:main",
+                "probe_bind_failed",
+                {
+                    "addr": list(_addr),
+                    "errno": _e.errno,
+                    "winerror": getattr(_e, "winerror", None),
+                    "str": str(_e),
+                },
+            )
+    # #endregion
+
+    try:
+        server = ThreadedHTTPServer((args.host, args.port), DashboardHandler)
+    except OSError as e:
+        # #region agent log
+        _agent_dbg(
+            "H1-H5",
+            "dashboard.py:main",
+            "ThreadedHTTPServer_failed",
+            {
+                "errno": e.errno,
+                "winerror": getattr(e, "winerror", None),
+                "str": str(e),
+            },
+        )
+        # #endregion
+        print(
+            "\n\033[93m[!] No se pudo iniciar el servidor HTTP en "
+            f"{args.host}:{args.port}.\033[0m\n"
+            "    Suele deberse a que el puerto ya está en uso por otro programa.\n"
+            "    • Comprueba con: netstat -ano | findstr :" + str(args.port) + "\n"
+            "    • Prueba otro puerto: python dashboard.py --port 8765\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # #region agent log
+    _agent_dbg(
+        "H1-H5",
+        "dashboard.py:main",
+        "ThreadedHTTPServer_ok",
+        {"host": args.host, "port": args.port},
+        run_id="post-fix",
+    )
+    # #endregion
 
     dash_path = Path(__file__).resolve()
     print(f"\n  \033[90mPID {os.getpid()} | {dash_path}\033[0m")

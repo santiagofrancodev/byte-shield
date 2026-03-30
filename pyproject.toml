@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "byte-shield"
+version = "2.0.0"
+description = "Auditoría TLS defensiva — motor Compliance-as-Code y agente OpenClaw opcional"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Byte Security Group" }]
+keywords = ["tls", "security", "compliance", "scanner"]
+dependencies = []
+
+[project.optional-dependencies]
+api = ["fastapi>=0.100.0", "uvicorn[standard]>=0.22.0"]
+pdf = ["weasyprint>=60.0"]
+dev = ["pytest>=7.0", "ruff>=0.1.0", "pre-commit>=3.0"]
+
+[project.scripts]
+byteshield = "byteshield.cli:main"
+byteshield-api = "byteshield.api.server:run"
+openclaw-agent = "openclaw_agent.orchestrator:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+byteshield = ["compliance/*.json"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,39 @@
+{
+  "generado_en": "2026-03-30T00:40:14.595102+00:00",
+  "herramienta": "Byte-Shield (tls_scanner) — CloudLabs Hackathon",
+  "resultados": [
+    {
+      "host": "34.45.64.235",
+      "puerto": 443,
+      "nivel": "MEDIO",
+      "tls": {
+        "TLS 1.0": {
+          "habilitado": false,
+          "obsoleto": true
+        },
+        "TLS 1.1": {
+          "habilitado": false,
+          "obsoleto": true
+        },
+        "TLS 1.2": {
+          "habilitado": true,
+          "obsoleto": false
+        },
+        "TLS 1.3": {
+          "habilitado": false,
+          "obsoleto": false
+        }
+      },
+      "hallazgos": [
+        "[NIST SP 800-52 Rev. 2] TLS 1.2 activo pero TLS 1.3 ausente — configuración subóptima. Se pierde handshake 0-RTT y PFS obligatorio."
+      ],
+      "recomendaciones": [
+        "Habilitar TLS 1.3 para cifrado con Perfect Forward Secrecy y handshake más rápido (1-RTT)."
+      ],
+      "timestamp": "2026-03-30T00:40:14.595057+00:00",
+      "trigger": "comando_manual",
+      "deps_map": null,
+      "deps_map_reason": "Omitido por política (nivel=MEDIO, trigger=comando_manual)"
+    }
+  ]
+}

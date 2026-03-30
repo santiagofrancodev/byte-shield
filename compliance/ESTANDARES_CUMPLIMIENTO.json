@@ -1,0 +1,32 @@
+{
+  "TLS 1.0": {
+    "nivel": "CRÍTICO",
+    "fuente_oficial": "RFC 8996 (2021), NIST SP 800-52 Rev. 2",
+    "motivo_tecnico": "Protocolo obsoleto desde 2018. Vulnerable a ataques POODLE y BEAST por debilidades en CBC y falta de AEAD.",
+    "recomendacion_accionable": "Deshabilitar TLS 1.0 en la configuración del servidor (nginx: ssl_protocols TLSv1.2 TLSv1.3;)."
+  },
+  "TLS 1.1": {
+    "nivel": "CRÍTICO",
+    "fuente_oficial": "RFC 8996 (2021), NIST SP 800-52 Rev. 2",
+    "motivo_tecnico": "Deprecado formalmente. Susceptible a degradación criptográfica y carece de cipher suites AEAD modernos.",
+    "recomendacion_accionable": "Deshabilitar TLS 1.1 para evitar ataques de degradación criptográfica (POODLE, BEAST)."
+  },
+  "TLS 1.2": {
+    "nivel": "SEGURO",
+    "fuente_oficial": "RFC 5246, NIST SP 800-52 Rev. 2",
+    "motivo_tecnico": "Versión segura vigente. Requiere cipher suites modernos (ECDHE + AES-GCM / CHACHA20-POLY1305).",
+    "recomendacion_accionable": "Mantener habilitado. Validar que los cipher suites no incluyan RC4, DES, 3DES o NULL.",
+    "alerta_sin_tls13": {
+      "nivel": "MEDIO",
+      "fuente_oficial": "NIST SP 800-52 Rev. 2",
+      "motivo_tecnico": "TLS 1.2 activo pero TLS 1.3 ausente — configuración subóptima. Se pierde handshake 0-RTT y PFS obligatorio.",
+      "recomendacion_accionable": "Habilitar TLS 1.3 para cifrado con Perfect Forward Secrecy y handshake más rápido (1-RTT)."
+    }
+  },
+  "TLS 1.3": {
+    "nivel": "SEGURO",
+    "fuente_oficial": "RFC 8446 (2018), NIST SP 800-52 Rev. 2",
+    "motivo_tecnico": "Versión más segura disponible. PFS obligatorio, handshake 1-RTT, sin cipher suites legacy.",
+    "recomendacion_accionable": "Mantener configuración actual y revisar periódicamente los cipher suites activos."
+  }
+}

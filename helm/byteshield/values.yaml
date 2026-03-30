@@ -1,0 +1,29 @@
+replicaCount: 1
+
+image:
+  repository: byte-shield
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+env: []
+#  - name: BYTESHIELD_AI_KEY
+#    valueFrom:
+#      secretKeyRef:
+#        name: byteshield-secrets
+#        key: ai-key
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1

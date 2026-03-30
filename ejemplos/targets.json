@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "description": "Inventario estático de objetivos Byte-Shield (ejemplo)",
+  "targets": [
+    {
+      "host": "34.45.64.235",
+      "port": 443,
+      "alias": "api-cloudlabs-prod",
+      "environment": "production",
+      "owner": "equipo-infra",
+      "tags": ["critical", "demo"],
+      "dependents": ["api-gateway", "auth-service"]
+    }
+  ]
+}
